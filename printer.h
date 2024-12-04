@@ -158,6 +158,8 @@ void printer_noise(uint16_t);
 void printer_flash_image(uint16_t height);
 void printer_roll_stop(uint8_t num);
 
+void printer_buffer(uint8_t *buff);
+
 #endif //PRINTER_H_
 
 

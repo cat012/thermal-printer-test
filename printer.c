@@ -117,6 +117,7 @@ static void stepper_cont(void)
 //-----------------------------------------------------------------------------
 void printer_end(void)
     {
+    //cnt=0;
     STEPPER_PIN_L;
     }
 
@@ -279,6 +280,18 @@ void printer_string_num30(const char *string)
         head_write();
         stepper_cont();
         }
+    }
+
+
+//-----------------------------------------------------------------------------
+void printer_buffer(uint8_t *buff)
+    {
+    for(uint8_t i=0; i<HEAD_BUFF_SIZE; i++)
+        {
+        headbuff[i]=0xff-buff[i];
+        }
+    head_write();
+    stepper_cont();
     }
 
 

@@ -3,7 +3,7 @@
 // ssd1306.h
 // Microchip XC8 Compiler v1.33
 //
-// version withaut display buffer
+// version without display buffer
 // 15-03-2024
 //
 

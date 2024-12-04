@@ -14,6 +14,7 @@
 #include "swuart.h"
 #include "flash.h"
 #include "delays.h"
+#include "hwuart.h"
 
 
 extern uint8_t imagedata[7296];
@@ -74,6 +75,10 @@ const uint16_t keysadc[5] = { 55, 145, 300, 515, 820 };
 
 uint16_t fimgh=0;
 
+uint16_t rximgheight=0;
+uint8_t goth=0;
+volatile uint8_t ttt=0;
+
 
 //=============================================================================
 void interrupt handler(void)
@@ -94,11 +99,55 @@ void interrupt handler(void)
 
         timer_isr();
 
-        //debug
-        //LATCbits.LATC7=1;
-        //LATCbits.LATC7=0;
-
         //debugcnt++;
+        }
+
+    if(RCIF && RCIE)
+        {
+        RCIF=0;
+
+        static uint16_t height_l=0;
+        static uint8_t height_h=0;
+
+        static uint8_t sindex=0;
+
+        if(goth==0)
+            {
+            static uint8_t cnt=0;
+            if(cnt==0)
+                {
+                cnt=1;
+                height_l=RCREG;
+                }
+            else
+                {
+                cnt=0;
+                height_h=RCREG;
+                rximgheight=(height_l<<8)|height_h;
+                //height_l=0;
+                //height_h=0;
+                goth=1;
+                }
+            }
+        else
+            {
+            if(sindex<RX_BUFF_SIZE)
+                {
+                flashbuff[sindex]=RCREG;
+                if(++sindex==RX_BUFF_SIZE)
+                    {
+                    ttt=1;
+                    sindex=0;
+
+                    }
+                }
+            else
+                {
+
+                }
+            }
+
+        return;
         }
     }
 
@@ -243,8 +292,8 @@ inline void ab_screen(void)
         oled_print(0,0,(char*)"     ");
         oled_print(120,0,(char*)"+");
 
-sprintf(databuff, "%03u",fimgh);
-oled_print(50,0,databuff);
+        sprintf(databuff, "%03u %03u",fimgh,rximgheight);
+        oled_print(40,0,databuff);
 
         oled_print(50,2,(char*)"TEXT");
         oled_print(0,4,(char*)"< Roll        Print >");
@@ -434,6 +483,36 @@ static inline uint16_t get_img_data_flash(void)
     return height;
     }
 
+/*
+
+//-----------------------------------------------------------------------------
+static inline uint16_t get_print_img_line(void)
+    {
+    flush_input_buffer;
+    turn_rx_on();
+    uint16_t height_l = _getchar();
+    uint8_t height_h = _getchar();
+    turn_rx_off();
+
+    uint16_t height=(height_l<<8)|height_h;
+
+    for(uint8_t h=0; h<(height/4); h++)
+        {
+        turn_rx_on();
+        uart_getdata(flashbuff, RX_BUFF_SIZE);
+        uart_getdata(flashbuff+RX_BUFF_SIZE, RX_BUFF_SIZE);
+        uart_getdata(flashbuff+RX_BUFF_SIZE+RX_BUFF_SIZE, RX_BUFF_SIZE);
+        uart_getdata(databuff, RX_BUFF_SIZE);
+        turn_rx_off();
+
+        printer_buffer(flashbuff);
+        printer_buffer(flashbuff+RX_BUFF_SIZE);
+        printer_buffer(flashbuff+RX_BUFF_SIZE+RX_BUFF_SIZE);
+        printer_buffer(databuff);
+        }
+    }
+ */
+
 
 //=============================================================================
 void main(void)
@@ -524,7 +603,7 @@ void main(void)
     int8_t tsmod=0;
 
     int8_t ptmod=0;
-
+    hw_uart_init();
     init_uart();
 
     TMR1ON=1;
@@ -532,10 +611,11 @@ void main(void)
     TMR1IE=1;
 
     turn_rx_off();
-
     flash_init();
 
     fimgh=(ee_read(EXT_EE_SIZE-2)<<8)|ee_read(EXT_EE_SIZE-1);
+
+    uint16_t hindex=0;
 
     for(;;)
         {
@@ -555,10 +635,30 @@ void main(void)
             {
             if(rxrun==1) get_msg_print();
             if(rxrun==2) fimgh=get_img_data_flash(); //get_img_data();
+            if(rxrun==3)
+                {
+                while(ttt==0);
+                if(ttt=1)
+                    {
+                    if(hindex<rximgheight)
+                        {
+                        printer_buffer(flashbuff);
+                        if(++hindex==rximgheight)
+                            {
+                            hindex=0;
+                            RCIE=0;
+                            hw_uart_rx_en(0);
+                            rxrun=0;
+                            print0=1;
+                            }
+                        }
+                    ttt=0;
+                    }
+                }
 
-            scrcnt=0;
+            //scrcnt=0;
 
-            beep_delay(10);
+            //beep_delay(10);
             }
 
         if(print0) //+++++++ roll ++++++++
@@ -613,13 +713,21 @@ void main(void)
         if(print3)
             {
             print3=0;
-
+/*
             printer_step(8);
             printer_flash_image(fimgh);
             printer_roll_stop(8);;
             beep_delay(70);
+*/
+            //get_print_img_line();
+            RCIF=0;
+            RCIE=1;
+            goth=0;
+            hw_uart_rx_en(1);
 
-            print0=1; //roll
+            rxrun=3;
+
+            //print0=1; //roll
 
             scrcnt=0;
             }
@@ -638,7 +746,7 @@ void main(void)
             scrcnt=0;
             }
 
-        if(btncnt==0)
+        if(btncnt==0 && rxrun==0)
             {
             btncnt=EVENT_PERIOD(10);
 
@@ -658,7 +766,7 @@ void main(void)
                         scrcnt=0;
                         if(scrmod==1) set_time_down(&tsmod);
                         if(scrmod==2) print0=1;
-                        if(scrmod==3) { if(rxrun==0) rxrun=2; }
+                        //if(scrmod==3) { if(rxrun==0) rxrun=2; }
                         break;
                 case 3: //------------ up -------------
                         scrcnt=0;

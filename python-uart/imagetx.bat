@@ -1,0 +1,2 @@
+@python imagetx.py
+@pause
