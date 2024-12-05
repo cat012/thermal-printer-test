@@ -158,14 +158,13 @@ void printer_ee_image(uint16_t height)
 
 
 //-----------------------------------------------------------------------------
-void printer_flash_image(uint16_t height)
+void printer_image(uint16_t height, const uint8_t *image)
     {
-    head_buff_clear();
     for(uint16_t k=0; k<height; k++)
         {
-        for(uint8_t i=0; i<48; i++)
+        for(uint8_t i=0; i<HEAD_BUFF_SIZE; i++)
             {
-            headbuff[i]=0xff-spi_flash_data_read(i+(48*k));
+            headbuff[i]=0xff-image[i+(HEAD_BUFF_SIZE*k)];
             }
 
         head_write();
@@ -175,14 +174,14 @@ void printer_flash_image(uint16_t height)
 
 
 //-----------------------------------------------------------------------------
-void printer_image(uint16_t height, const uint8_t *image)
+void printer_flash_image(uint16_t height)
     {
+    //head_buff_clear();
     for(uint16_t k=0; k<height; k++)
         {
         for(uint8_t i=0; i<HEAD_BUFF_SIZE; i++)
             {
-            headbuff[i]=0xff-image[i+(HEAD_BUFF_SIZE*k)];
-            //headbuff[i]=0xff-image[i+(HEAD_BUFF_SIZE*k)]; source - inversed image
+            headbuff[i]=0xff-spi_flash_data_read(i+(HEAD_BUFF_SIZE*k));
             }
 
         head_write();

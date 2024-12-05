@@ -1,23 +1,18 @@
 
 #include <stdio.h>
-//#include <stdlib.h>
-//#include <xc.h>
-
 #include <stdint.h>
+//#include <stdlib.h>
 
 #include "main.h"
-
 #include "printer.h"
 #include "ssd1306.h"
 #include "m41t56.h"
 #include "at24c64.h"
-#include "swuart.h"
 #include "flash.h"
 #include "delays.h"
 #include "hwuart.h"
 
 
-extern uint8_t imagedata[7296];
 extern uint8_t imgtest[];
 
 
@@ -68,7 +63,6 @@ uint8_t rtcdata[M41T56_BUFF_SIZE];
 
 const uint16_t keysadc[5] = { 55, 145, 300, 515, 820 };
 
-
 //volatile uint32_t debugcnt=0;
 //uint32_t t1=0;
 //uint32_t t2=0;
@@ -76,8 +70,6 @@ const uint16_t keysadc[5] = { 55, 145, 300, 515, 820 };
 uint16_t fimgh=0;
 
 uint16_t rximgheight=0;
-uint8_t goth=0;
-volatile uint8_t ttt=0;
 
 
 //=============================================================================
@@ -90,6 +82,7 @@ void interrupt handler(void)
 
         if(scrcnt) scrcnt--;
         if(btncnt) btncnt--;
+        return;
         }
 
     if(TMR1IF && TMR1IE)  //timer1 overflow
@@ -97,56 +90,13 @@ void interrupt handler(void)
         TMR1IF=0;
         TMR1=TMR1_OVF_PRELOAD;
 
-        timer_isr();
-
         //debugcnt++;
+        return;
         }
 
     if(RCIF && RCIE)
         {
         RCIF=0;
-
-        static uint16_t height_l=0;
-        static uint8_t height_h=0;
-
-        static uint8_t sindex=0;
-
-        if(goth==0)
-            {
-            static uint8_t cnt=0;
-            if(cnt==0)
-                {
-                cnt=1;
-                height_l=RCREG;
-                }
-            else
-                {
-                cnt=0;
-                height_h=RCREG;
-                rximgheight=(height_l<<8)|height_h;
-                //height_l=0;
-                //height_h=0;
-                goth=1;
-                }
-            }
-        else
-            {
-            if(sindex<RX_BUFF_SIZE)
-                {
-                flashbuff[sindex]=RCREG;
-                if(++sindex==RX_BUFF_SIZE)
-                    {
-                    ttt=1;
-                    sindex=0;
-
-                    }
-                }
-            else
-                {
-
-                }
-            }
-
         return;
         }
     }
@@ -247,28 +197,6 @@ inline void main_screen(void)
 
     //t1=debugcnt;
     //t2=debugcnt;
-
-    //sprintf(databuff,"%2lu ms", t2-t1);
-    //oled_print(0,6,databuff);
-
-/*
-    uint8_t a,b,c=0;
-
-    CLR_CS_PIN;
-    spi_flash_write(INSTR_ID_READ_JEDEC);
-
-    a=spi_flash_read();
-    b=spi_flash_read();
-    c=spi_flash_read();
-    SET_CS_PIN;
-
-    sprintf(databuff, "%02x %02x %02x",a,b,c);
-    oled_print(0,2,databuff);
-
-
-    sprintf(databuff, "%02x %02x %02x %02x",spi_flash_data_read(0),spi_flash_data_read(1),spi_flash_data_read(2),spi_flash_data_read(3));
-    oled_print(0,3,databuff);
- */
     }
 
 
@@ -360,7 +288,7 @@ inline void printer_test_screen(int8_t * mode)
     }
 
 
-//24ch wid 384 (print_string28,18)
+//24 char width 384 (print_string28,18)
 //-----------------------------------------------------------------------------
 static inline uint8_t uart_getstr(char *buf, uint8_t size)
     {
@@ -369,7 +297,7 @@ static inline uint8_t uart_getstr(char *buf, uint8_t size)
 
     for(; i<size-1; i++)
         {
-        buf[i] = _getchar();
+        buf[i] = hw_uart_read_byte();
         if(buf[i]==13 || buf[i]==27) break;   // RC or escape  //xxx define
         }
 
@@ -384,10 +312,9 @@ static inline void get_msg_print(void)
     {
     uint8_t stop=0;
 
-    flush_input_buffer;
-    turn_rx_on();
+    hw_uart_rx_enable();
     stop=uart_getstr(databuff, 24+1);
-    turn_rx_off();
+    hw_uart_rx_disable();
 
     if(stop)
         {
@@ -406,24 +333,13 @@ static inline void get_msg_print(void)
 
 
 //-----------------------------------------------------------------------------
-static inline void uart_getdata(uint8_t *buf, uint8_t size)
-    {
-    for(uint8_t i=0; i < size; i++)
-        {
-        buf[i] = _getchar();
-        }
-    }
-
-/*
-//-----------------------------------------------------------------------------
-static inline void get_img_data(void)
+static inline void get_img_data_ee(void)
     {
     for(uint8_t k=0; k<EE_IMG_HEIGHT; k++)
         {
-        flush_input_buffer;
-        turn_rx_on();
-        uart_getdata(databuff, RX_BUFF_SIZE);
-        turn_rx_off();
+        hw_uart_rx_enable();
+        hw_uart_get_data(databuff, RX_BUFF_SIZE);
+        hw_uart_rx_disable();
 
         for(uint8_t i=0; i<RX_BUFF_SIZE; i++)
             {
@@ -432,41 +348,31 @@ static inline void get_img_data(void)
         }
     rxrun=0;
     }
-*/
 
-#define FLASH_IMG_LINE_SIZE_2  48
+
+#define FLASH_IMG_LINE_SIZE  48
 #define TRIPLE_SPI_FLASH_PAGE_SIZE (SPI_FLASH_PAGE_SIZE*3U)
 //-----------------------------------------------------------------------------
 static inline uint16_t get_img_data_flash(void)
     {
-    flush_input_buffer;
-    turn_rx_on();
-    uint16_t height_l = _getchar();
-    uint8_t height_h = _getchar();
-    turn_rx_off();
+    spi_flash_write_enable();
+    spi_flash_chip_erase();
+    while(spi_flash_read_status()&STATUS_BIT_WRITE_IN_PROGRESS);
 
-    uint16_t height=(height_l<<8)|height_h;
+    hw_uart_rx_enable();
+
+    uint16_t height=hw_uart_read_two_byte();
 
     for(uint8_t h=0; h<(height/16); h++)
         {
-        for(uint8_t k=0; k<(TRIPLE_SPI_FLASH_PAGE_SIZE/FLASH_IMG_LINE_SIZE_2); k++)
+        for(uint8_t k=0; k<(TRIPLE_SPI_FLASH_PAGE_SIZE/FLASH_IMG_LINE_SIZE); k++)
             {
-            flush_input_buffer;
-            turn_rx_on();
-            uart_getdata(databuff, FLASH_IMG_LINE_SIZE_2);
-            turn_rx_off();
+            hw_uart_get_data(databuff, RX_BUFF_SIZE);
 
-            for(uint8_t i=0; i<FLASH_IMG_LINE_SIZE_2; i++)
+            for(uint8_t i=0; i<FLASH_IMG_LINE_SIZE; i++)
                 {
-                flashbuff[(uint16_t)i+((uint16_t)FLASH_IMG_LINE_SIZE_2*(uint16_t)k)] = databuff[i];
+                flashbuff[(uint16_t)i+((uint16_t)FLASH_IMG_LINE_SIZE*(uint16_t)k)] = databuff[i];
                 }
-            }
-
-        if(h==0)
-            {
-            spi_flash_write_enable();
-            spi_flash_chip_erase();
-            while(spi_flash_read_status()&STATUS_BIT_WRITE_IN_PROGRESS);
             }
 
         for(uint8_t i=0; i<3; i++)
@@ -476,6 +382,9 @@ static inline uint16_t get_img_data_flash(void)
             while(spi_flash_read_status()&STATUS_BIT_WRITE_IN_PROGRESS);
             }
         }
+
+    hw_uart_rx_disable();
+
     ee_write(EXT_EE_SIZE-2,height>>8);
     ee_write(EXT_EE_SIZE-1,height);
 
@@ -483,35 +392,22 @@ static inline uint16_t get_img_data_flash(void)
     return height;
     }
 
-/*
 
 //-----------------------------------------------------------------------------
-static inline uint16_t get_print_img_line(void)
+static inline void get_print_img(void)
     {
-    flush_input_buffer;
-    turn_rx_on();
-    uint16_t height_l = _getchar();
-    uint8_t height_h = _getchar();
-    turn_rx_off();
+    hw_uart_rx_enable();
 
-    uint16_t height=(height_l<<8)|height_h;
+    rximgheight=hw_uart_read_two_byte();
 
-    for(uint8_t h=0; h<(height/4); h++)
+    for(uint16_t h=0; h<rximgheight; h++)
         {
-        turn_rx_on();
-        uart_getdata(flashbuff, RX_BUFF_SIZE);
-        uart_getdata(flashbuff+RX_BUFF_SIZE, RX_BUFF_SIZE);
-        uart_getdata(flashbuff+RX_BUFF_SIZE+RX_BUFF_SIZE, RX_BUFF_SIZE);
-        uart_getdata(databuff, RX_BUFF_SIZE);
-        turn_rx_off();
-
-        printer_buffer(flashbuff);
-        printer_buffer(flashbuff+RX_BUFF_SIZE);
-        printer_buffer(flashbuff+RX_BUFF_SIZE+RX_BUFF_SIZE);
+        hw_uart_get_data(databuff, RX_BUFF_SIZE);
         printer_buffer(databuff);
         }
+
+    hw_uart_rx_disable();
     }
- */
 
 
 //=============================================================================
@@ -525,15 +421,6 @@ void main(void)
     SBOREN=1; //1=enable brown out reset
     SWDTEN=0; //0=disable watchdog timer
     RBPU=1;   //0=enable pull-up
-/*
-    //debug
-    TRISCbits.RC1=0;
-
-    for(;;)
-        {
-        __delay_us(1);
-        }
-*/
 
     PEIE=1;
     GIE=1;
@@ -598,24 +485,15 @@ void main(void)
     uint8_t print4=0;
     uint8_t print5=0;
 
-
     uint8_t scrmod=3;
     int8_t tsmod=0;
 
     int8_t ptmod=0;
     hw_uart_init();
-    init_uart();
 
-    TMR1ON=1;
-    TMR1IF=0;
-    TMR1IE=1;
-
-    turn_rx_off();
     flash_init();
 
     fimgh=(ee_read(EXT_EE_SIZE-2)<<8)|ee_read(EXT_EE_SIZE-1);
-
-    uint16_t hindex=0;
 
     for(;;)
         {
@@ -634,30 +512,20 @@ void main(void)
         if(rxrun)
             {
             if(rxrun==1) get_msg_print();
-            if(rxrun==2) fimgh=get_img_data_flash(); //get_img_data();
+            if(rxrun==2)
+                {
+                fimgh=get_img_data_flash();
+                //get_img_data_ee();
+                beep_delay(30);
+                }
             if(rxrun==3)
                 {
-                while(ttt==0);
-                if(ttt=1)
-                    {
-                    if(hindex<rximgheight)
-                        {
-                        printer_buffer(flashbuff);
-                        if(++hindex==rximgheight)
-                            {
-                            hindex=0;
-                            RCIE=0;
-                            hw_uart_rx_en(0);
-                            rxrun=0;
-                            print0=1;
-                            }
-                        }
-                    ttt=0;
-                    }
+                get_print_img();
+                rxrun=0;
+                print0=1;
                 }
 
             //scrcnt=0;
-
             //beep_delay(10);
             }
 
@@ -713,21 +581,15 @@ void main(void)
         if(print3)
             {
             print3=0;
-/*
+
             printer_step(8);
             printer_flash_image(fimgh);
             printer_roll_stop(8);;
             beep_delay(70);
-*/
-            //get_print_img_line();
-            RCIF=0;
-            RCIE=1;
-            goth=0;
-            hw_uart_rx_en(1);
 
-            rxrun=3;
+            //rxrun=3;
 
-            //print0=1; //roll
+            print0=1; //roll
 
             scrcnt=0;
             }
@@ -746,7 +608,7 @@ void main(void)
             scrcnt=0;
             }
 
-        if(btncnt==0 && rxrun==0)
+        if(btncnt==0)
             {
             btncnt=EVENT_PERIOD(10);
 
@@ -766,7 +628,7 @@ void main(void)
                         scrcnt=0;
                         if(scrmod==1) set_time_down(&tsmod);
                         if(scrmod==2) print0=1;
-                        //if(scrmod==3) { if(rxrun==0) rxrun=2; }
+                        if(scrmod==3) { if(rxrun==0) rxrun=3; }
                         break;
                 case 3: //------------ up -------------
                         scrcnt=0;

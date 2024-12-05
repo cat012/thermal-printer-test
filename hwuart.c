@@ -2,6 +2,8 @@
 
 #include "hwuart.h"
 
+
+//-----------------------------------------------------------------------------
 void hw_uart_init(void)
     {
     SPEN=1;
@@ -32,13 +34,45 @@ void hw_uart_init(void)
     SPBRG=21;
 
     RCIF=0;
-    RCIE=1;
-
+    RCIE=0;
     }
 
-void hw_uart_rx_en(uint8_t enable)
+
+//-----------------------------------------------------------------------------
+void hw_uart_rx_enable(void)
     {
-    if(enable) CREN=1;
-    else CREN=0;
+    CREN=1;
+    RCIF=0;
+    }
+
+//-----------------------------------------------------------------------------
+void hw_uart_rx_disable(void)
+    {
+    CREN=0;
+    }
+
+//-----------------------------------------------------------------------------
+uint8_t hw_uart_read_byte(void)
+    {
+    while(!RCIF);
+    return RCREG;
+    }
+
+//-----------------------------------------------------------------------------
+uint16_t hw_uart_read_two_byte(void)
+    {
+    uint16_t low=hw_uart_read_byte();
+    uint8_t high=hw_uart_read_byte();
+
+    return((low<<8)|high);
+    }
+
+//-----------------------------------------------------------------------------
+void hw_uart_get_data(uint8_t *buf, uint8_t size)
+    {
+    for(uint8_t i=0; i<size; i++)
+        {
+        buf[i]=hw_uart_read_byte();
+        }
     }
 

@@ -69,15 +69,10 @@
 #include <xc.h>
 
 
-#define SW_UART_BAUD_RATE  4800
-#define SW_UART_BAUD_CORR  500  //0xxx 200 ok  500isisok 1000okerr 1100err
-
-
 #define BUZZER_PIN   LATBbits.LATB4
 #define BUZZER_TRIS  TRISBbits.RB4
 
 #define BUZZER_PIN_INIT BUZZER_PIN=0; BUZZER_TRIS=0
-
 
 
 #define  TMR0_PRESCALER_256  0b00000111
@@ -106,7 +101,7 @@
 
 #define TMR1_PRESCALER  TMR1_PRESCALER_1
 
-#define TMR1_OVF_FREQ     ((SW_UART_BAUD_RATE*3)+SW_UART_BAUD_CORR)
+#define TMR1_OVF_FREQ     1000U
 #define TMR1_OVF_PRELOAD  (65536U-(((_XTAL_FREQ/4U)/1U)/TMR1_OVF_FREQ))
 
 

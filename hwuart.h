@@ -19,7 +19,11 @@
 
 
 void hw_uart_init(void);
-void hw_uart_rx_en(uint8_t);
+void hw_uart_rx_enable(void);
+void hw_uart_rx_disable(void);
+uint8_t hw_uart_read_byte(void);
+uint16_t hw_uart_read_two_byte(void);
+void hw_uart_get_data(uint8_t *buf, uint8_t size);
 
 #endif	/* HW_UART_H */
 

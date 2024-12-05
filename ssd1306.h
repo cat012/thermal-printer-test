@@ -22,7 +22,7 @@
 #define SSD1306_SCR_WIDHT   128
 #define SSD1306_SCR_SIZE    (SSD1306_SCR_WIDHT*(SSD1306_SCR_HEIGHT/8U))
 
-#define SSD1306_DEFAULT_BRIGHTNESS  128U
+#define SSD1306_DEFAULT_BRIGHTNESS  10U
 
 void oled_fill(uint8_t);  //fill screen
 void oled_bright(uint8_t);  //brightness
